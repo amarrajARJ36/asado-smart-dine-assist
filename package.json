@@ -1,21 +1,5 @@
 {
-  "name": "smart-dine-assist",
+  "name": "asado-smart-dine-assist",
   "version": "1.0.0",
-  "description": "SmartDine Assist - Simple Restaurant Service Calling with Local WebSocket Server",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "keywords": [
-    "restaurant",
-    "service-call",
-    "websocket",
-    "local-wifi"
-  ],
-  "author": "SmartDine Team",
-  "license": "MIT"
+  "description": "SmartDine Assist - Cloud Restaurant Service Calling with Supabase Realtime"
 }
