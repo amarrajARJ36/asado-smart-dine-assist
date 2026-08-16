@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartDine Assist — Simple Restaurant Service Calling</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+
+  <!-- Clean Top Navigation Bar -->
+  <header class="top-bar">
+    <div class="brand-title">
+      <span>🍽️ SmartDine Assist</span>
+    </div>
+
+    <div class="nav-controls">
+      <!-- Simple WiFi Network Toggle (for testing security) -->
+      <button id="btn-wifi-toggle" class="wifi-toggle-btn" title="Click to test External IP Security block">
+        📶 Connected to Restaurant WiFi 🔒
+      </button>
+
+      <!-- Simple Role Switcher -->
+      <button id="btn-guest-view" class="role-btn active">Guest (Table 4)</button>
+      <button id="btn-captain-view" class="role-btn">Captain Alerts (<span id="alert-badge">0</span>)</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- ====================================================================
+         VIEW 1: GUEST TABLE VIEW (Simple & Clean)
+         ==================================================================== -->
+    <section id="guest-view" class="view-section active">
+      <div class="guest-header-card">
+        <div class="table-title">
+          <h2>Table 04</h2>
+          <p>Assigned Captain: Capt. Rahul</p>
+        </div>
+        <div id="wifi-status-badge" class="wifi-badge">
+          <span>🔒 WiFi Security Verified</span>
+        </div>
+      </div>
+
+      <!-- Simple Service Buttons -->
+      <div class="service-buttons-grid">
+        <button class="service-btn" onclick="sendServiceAlert('Call Captain', '🛎️')">
+          <div class="service-icon">🛎️</div>
+          <span>Call Captain</span>
+        </button>
+
+        <button class="service-btn" onclick="sendServiceAlert('Water Refill', '💧')">
+          <div class="service-icon">💧</div>
+          <span>Water Refill</span>
+        </button>
+
+        <button class="service-btn" onclick="sendServiceAlert('Request Bill', '🧾')">
+          <div class="service-icon">🧾</div>
+          <span>Request Bill</span>
+        </button>
+
+        <button class="service-btn" onclick="sendServiceAlert('Clear Table', '🍽️')">
+          <div class="service-icon">🍽️</div>
+          <span>Clear Table</span>
+        </button>
+
+        <button class="service-btn" onclick="sendServiceAlert('Extra Cutlery', '🍴')">
+          <div class="service-icon">🍴</div>
+          <span>Extra Cutlery</span>
+        </button>
+
+        <button class="service-btn" onclick="sendServiceAlert('Condiments', '🌶️')">
+          <div class="service-icon">🌶️</div>
+          <span>Condiments</span>
+        </button>
+      </div>
+
+      <!-- Simple Guest Status Bar -->
+      <div id="guest-status-box" class="guest-status-box" style="display: none;">
+        <span id="guest-status-text">Your request has been sent to Capt. Rahul!</span>
+      </div>
+    </section>
+
+    <!-- ====================================================================
+         VIEW 2: CAPTAIN ALERTS VIEW (Simple: Sound, Alert, Ack, Complete)
+         ==================================================================== -->
+    <section id="captain-view" class="view-section">
+      <div class="captain-header">
+        <h2>Incoming Service Alerts</h2>
+        <p>You will hear a sound alert when a table presses a service button.</p>
+      </div>
+
+      <!-- Incoming Alerts Container -->
+      <div id="alerts-container" class="alerts-list">
+        <div class="empty-state">
+          No active service requests right now.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- WiFi Block Modal -->
+  <div id="security-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="font-size: 2.5rem;">🚫</div>
+      <h3>WiFi Security Blocked</h3>
+      <p>
+        To prevent remote QR code pranks, guests can only call for service when connected to the restaurant's free guest WiFi network.
+      </p>
+      <button class="btn-close-modal" onclick="closeSecurityModal()">
+        Switch to Captain View
+      </button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

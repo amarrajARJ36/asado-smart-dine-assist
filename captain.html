@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARJ SmartDine — Captain Console</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body class="captain-body">
+
+  <div class="captain-console">
+    <!-- Sidebar Control Panel -->
+    <aside class="console-sidebar">
+      <div class="sidebar-brand">
+        <h1>ARJ</h1>
+        <p>SmartDine Assist</p>
+      </div>
+
+      <div class="sidebar-status-box">
+        <div class="status-metric">
+          <span class="metric-value" id="alert-badge">0</span>
+          <span class="metric-label">Active Requests</span>
+        </div>
+      </div>
+
+      <div class="sidebar-controls">
+        <div class="control-group">
+          <label class="control-label">Audio Alerts</label>
+          <button id="btn-toggle-sound" class="btn-sound-toggle enabled">
+            Sound is Enabled
+          </button>
+          <p class="control-hint">Sound notification will chime on new incoming alerts.</p>
+        </div>
+
+        <div class="control-group">
+          <button id="btn-test-sound" class="btn-secondary-action">
+            Test Chime
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <p>Captain Control Console</p>
+        <p class="footer-version">v1.2.0 (Local WiFi)</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="console-main">
+      <header class="console-header">
+        <div class="header-title">
+          <h2>Active Table Requests</h2>
+          <p>Real-time notifications from guest tables connected to local WiFi.</p>
+        </div>
+      </header>
+
+      <div id="alerts-container" class="alerts-grid">
+        <!-- Empty state default -->
+        <div class="empty-state">
+          <h3>No Active Requests</h3>
+          <p>Tables will appear here when guests request service.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Supabase JS SDK & Config -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="captain.js"></script>
+</body>
+</html>

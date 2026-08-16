@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#faf8f5" />
+  <title>ARJ SmartDine Assist</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+
+  <div class="guest-page">
+
+    <!-- Hero Welcome -->
+    <div class="guest-hero">
+      <span class="brand-label">ARJ SmartDine Assist</span>
+      <div class="welcome-text">Welcome</div>
+      <div id="guest-table-number" class="table-number">Table 04</div>
+      <span class="hero-divider"></span>
+      <div class="hero-subtitle">Need something? Tap a service below and we'll take care of it.</div>
+
+      <!-- WiFi Status -->
+      <div class="wifi-badge-wrap">
+        <div id="wifi-badge" class="wifi-badge connected">
+          <span class="wifi-dot"></span>
+          <span>Connected to Restaurant WiFi</span>
+        </div>
+      </div>
+
+      <!-- Session Time Remaining Badge -->
+      <div id="session-badge" class="session-badge-wrap" style="display: none;">
+        <span id="session-time-text">Session: 1h 30m remaining</span>
+      </div>
+
+      <!-- WiFi Warning (hidden by default) -->
+      <div id="wifi-warning" class="wifi-warning">
+        <span>⚠️</span>
+        <span>Please connect to the restaurant WiFi to use this service.</span>
+      </div>
+
+      <!-- Session Expired Warning (hidden by default) -->
+      <div id="session-warning" class="session-warning" style="display: none;">
+        <span>⌛</span>
+        <span>Dining session limit (1h 30m) reached. Please contact your waiter to extend your session.</span>
+      </div>
+    </div>
+
+    <!-- Services Section -->
+    <div class="service-section">
+      <div class="section-heading">How can we help you?</div>
+
+      <div class="svc-grid">
+        <button class="svc-card" data-svc="call_waiter" onclick="requestService('call_waiter')">
+          <div class="svc-icon-circle">🍽️</div>
+          <span class="svc-label">Call Waiter</span>
+          <span class="svc-sent-badge">✓ Sent</span>
+        </button>
+
+        <button class="svc-card" data-svc="water" onclick="requestService('water')">
+          <div class="svc-icon-circle">💧</div>
+          <span class="svc-label">Water Refill</span>
+          <span class="svc-sent-badge">✓ Sent</span>
+        </button>
+
+        <button class="svc-card" data-svc="clear_table" onclick="requestService('clear_table')">
+          <div class="svc-icon-circle">🧹</div>
+          <span class="svc-label">Clear Table</span>
+          <span class="svc-sent-badge">✓ Sent</span>
+        </button>
+
+        <button class="svc-card" data-svc="bill" onclick="requestService('bill')">
+          <div class="svc-icon-circle">🧾</div>
+          <span class="svc-label">Request Bill</span>
+          <span class="svc-sent-badge">✓ Sent</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Custom Request Section -->
+    <div class="custom-request-section">
+      <div class="custom-request-title">Need anything else?</div>
+      <textarea 
+        id="custom-request-input" 
+        class="custom-textarea" 
+        rows="3" 
+        placeholder="Type your request (e.g., extra mayo, ketchup, salad)."
+      ></textarea>
+      <button 
+        id="btn-send-custom" 
+        class="btn-send-custom" 
+        onclick="submitCustomRequest()"
+      >
+        Send Request
+      </button>
+    </div>
+
+    <!-- Status Card -->
+    <div id="status-card" class="status-card success">
+      <div class="status-check">✓</div>
+      <div id="status-title" class="status-title">Request Sent</div>
+      <div id="status-msg" class="status-msg">Our team has received your request.</div>
+      <div id="status-eta" class="status-eta">Estimated response time: 2–3 minutes</div>
+    </div>
+
+    <!-- Footer -->
+    <div class="guest-footer">
+      <div class="footer-text">Powered by ARJ SmartDine Assist</div>
+    </div>
+  </div>
+
+  <!-- WiFi Block Modal -->
+  <div id="security-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="font-size: 2.5rem;">🔒</div>
+      <h3>WiFi Required</h3>
+      <p>Please connect to the restaurant's guest WiFi network to use this service.</p>
+      <button class="btn-close-modal" onclick="closeSecurityModal()">Got It</button>
+    </div>
+  </div>
+
+  <!-- Session Expired Modal -->
+  <div id="session-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="font-size: 2.5rem;">⌛</div>
+      <h3>Session Expired</h3>
+      <p>Your 1h 30m dining session limit has reached. Please speak with your captain if you need further service.</p>
+      <button class="btn-close-modal" onclick="closeSessionModal()">Got It</button>
+    </div>
+  </div>
+
+  <!-- Supabase JS SDK & Config -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="guest.js"></script>
+</body>
+</html>
