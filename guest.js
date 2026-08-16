@@ -111,11 +111,18 @@ function initSession() {
   const sessionKey = `smart_dine_session_${currentTable}_${currentToken}`;
   let sessionStart = localStorage.getItem(sessionKey);
 
+  if (sessionStart) {
+    sessionStart = parseInt(sessionStart, 10);
+    // If the session is older than 90 minutes, start a new one on fresh reload!
+    if (Date.now() - sessionStart > SESSION_LIMIT_MS) {
+      sessionStart = null;
+      localStorage.removeItem(sessionKey);
+    }
+  }
+
   if (!sessionStart) {
     sessionStart = Date.now();
     localStorage.setItem(sessionKey, sessionStart);
-  } else {
-    sessionStart = parseInt(sessionStart, 10);
   }
 
   checkSessionStatus(sessionStart);
