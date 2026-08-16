@@ -1,6 +1,9 @@
 {
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/", "destination": "/guest.html" }
+  "version": 2,
+  "builds": [
+    {
+      "src": "*",
+      "use": "@vercel/static"
+    }
   ]
 }
