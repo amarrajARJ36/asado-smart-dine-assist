@@ -8,7 +8,43 @@
 </head>
 <body class="captain-body">
 
-  <div class="captain-console">
+  <!-- PIN Lock Screen (blocks dashboard until correct PIN) -->
+  <div id="pin-screen" class="pin-screen">
+    <div class="pin-container">
+      <div class="pin-brand">
+        <h1>ARJ</h1>
+        <p>SmartDine Assist</p>
+      </div>
+      <div class="pin-heading">Captain Console</div>
+      <p class="pin-subtitle">Enter your 4-digit PIN to access the dashboard</p>
+
+      <div class="pin-dots">
+        <span class="pin-dot" id="dot-0"></span>
+        <span class="pin-dot" id="dot-1"></span>
+        <span class="pin-dot" id="dot-2"></span>
+        <span class="pin-dot" id="dot-3"></span>
+      </div>
+
+      <div id="pin-error" class="pin-error"></div>
+
+      <div class="pin-keypad">
+        <button class="pin-key" onclick="pinPress('1')">1</button>
+        <button class="pin-key" onclick="pinPress('2')">2</button>
+        <button class="pin-key" onclick="pinPress('3')">3</button>
+        <button class="pin-key" onclick="pinPress('4')">4</button>
+        <button class="pin-key" onclick="pinPress('5')">5</button>
+        <button class="pin-key" onclick="pinPress('6')">6</button>
+        <button class="pin-key" onclick="pinPress('7')">7</button>
+        <button class="pin-key" onclick="pinPress('8')">8</button>
+        <button class="pin-key" onclick="pinPress('9')">9</button>
+        <button class="pin-key pin-key-empty"></button>
+        <button class="pin-key" onclick="pinPress('0')">0</button>
+        <button class="pin-key pin-key-delete" onclick="pinDelete()">⌫</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="captain-console" id="captain-console" style="display: none;">
     <!-- Sidebar Control Panel -->
     <aside class="console-sidebar">
       <div class="sidebar-brand">

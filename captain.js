@@ -1,15 +1,135 @@
 /**
- * ARJ SmartDine Assist — Captain Dashboard Logic (Supabase Realtime + Polling Fallback)
+ * ARJ SmartDine Assist — Captain Dashboard Logic
+ * PIN-protected, Supabase Realtime + Polling sync
  */
 
 let alerts = [];
 let isSoundEnabled = true;
 let previousAlertIds = new Set();
 let audioUnlocked = false;
+let isPinVerified = false;
 
-// --- Fetch Alerts from Supabase ---
+// ==========================================================
+// PIN AUTHENTICATION
+// ==========================================================
+let pinCode = '';
+
+function pinPress(digit) {
+  if (pinCode.length >= 4) return;
+  pinCode += digit;
+  updatePinDots();
+
+  if (pinCode.length === 4) {
+    validatePin();
+  }
+}
+
+function pinDelete() {
+  if (pinCode.length === 0) return;
+  pinCode = pinCode.slice(0, -1);
+  updatePinDots();
+  // Clear error on delete
+  document.getElementById('pin-error').textContent = '';
+  clearPinError();
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`dot-${i}`);
+    if (dot) {
+      dot.classList.toggle('filled', i < pinCode.length);
+      dot.classList.remove('error');
+    }
+  }
+}
+
+function showPinError(message) {
+  const errorEl = document.getElementById('pin-error');
+  if (errorEl) errorEl.textContent = message;
+
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`dot-${i}`);
+    if (dot) {
+      dot.classList.add('error');
+      dot.classList.remove('filled');
+    }
+  }
+
+  // Reset after shake animation
+  setTimeout(() => {
+    pinCode = '';
+    clearPinError();
+    updatePinDots();
+  }, 800);
+}
+
+function clearPinError() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`dot-${i}`);
+    if (dot) dot.classList.remove('error');
+  }
+}
+
+async function validatePin() {
+  const client = window.sbClient;
+  if (!client) {
+    showPinError('System not ready. Please refresh.');
+    return;
+  }
+
+  try {
+    const { data, error } = await client.rpc('validate_captain_pin', {
+      p_pin: pinCode
+    });
+
+    if (error) {
+      console.error("PIN validation RPC error:", error);
+      showPinError('Connection error. Try again.');
+      return;
+    }
+
+    if (data && data.success) {
+      // PIN correct — unlock dashboard
+      isPinVerified = true;
+      sessionStorage.setItem('captain_pin_verified', 'true');
+
+      const pinScreen = document.getElementById('pin-screen');
+      const dashboard = document.getElementById('captain-console');
+
+      if (pinScreen) pinScreen.classList.add('hidden');
+      if (dashboard) dashboard.style.display = '';
+
+      // Start the dashboard
+      initSupabase();
+    } else {
+      showPinError(data?.error || 'Incorrect PIN.');
+    }
+  } catch (err) {
+    console.error("PIN validation error:", err);
+    showPinError('Network error. Try again.');
+  }
+}
+
+function checkExistingSession() {
+  // If already verified in this browser tab session, skip PIN
+  if (sessionStorage.getItem('captain_pin_verified') === 'true') {
+    isPinVerified = true;
+    const pinScreen = document.getElementById('pin-screen');
+    const dashboard = document.getElementById('captain-console');
+    if (pinScreen) pinScreen.classList.add('hidden');
+    if (dashboard) dashboard.style.display = '';
+    initSupabase();
+    return true;
+  }
+  return false;
+}
+
+// ==========================================================
+// SUPABASE DATA & REALTIME
+// ==========================================================
+
 async function fetchAlerts(triggerSound = true) {
-  const client = window.sbClient || (window.supabase && window.supabase.createClient ? window.sbClient : null);
+  const client = window.sbClient;
   if (!client) return;
 
   try {
@@ -34,7 +154,6 @@ async function fetchAlerts(triggerSound = true) {
       timestamp: row.created_at
     }));
 
-    // Check if there are new alerts that weren't in previousAlertIds
     const newAlertFound = currentAlerts.some(a => !previousAlertIds.has(a.id));
     if (newAlertFound && triggerSound && isSoundEnabled && previousAlertIds.size > 0) {
       playSoundAlert();
@@ -48,49 +167,37 @@ async function fetchAlerts(triggerSound = true) {
   }
 }
 
-// --- Supabase Realtime & Polling Setup ---
 function initSupabase() {
   const client = window.sbClient;
-  if (!client) {
-    console.warn("Supabase client not ready.");
-    return;
-  }
+  if (!client) return;
 
-  // 1. Initial Fetch
   fetchAlerts(false);
 
-  // 2. Realtime Subscription
   try {
     client
       .channel('captain_channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'service_requests' },
-        (payload) => {
-          console.log("Realtime event received:", payload.eventType);
-          fetchAlerts(true);
-        }
+        () => { fetchAlerts(true); }
       )
-      .subscribe((status) => {
-        console.log("Supabase Realtime Status:", status);
-      });
+      .subscribe();
   } catch (e) {
-    console.warn("Realtime subscription fallback to polling:", e);
+    console.warn("Realtime subscription error:", e);
   }
 
-  // 3. Fast 2-second background sync fallback (guarantees 100% reliability)
-  setInterval(() => {
-    fetchAlerts(true);
-  }, 2000);
+  // 2-second polling fallback
+  setInterval(() => { fetchAlerts(true); }, 2000);
 }
 
-// --- 4-Tone Hospitality Chime ---
+// ==========================================================
+// AUDIO
+// ==========================================================
+
 function playSoundAlert() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 
     const playTone = (freq, startTime, duration) => {
       const osc = audioCtx.createOscillator();
@@ -106,16 +213,19 @@ function playSoundAlert() {
     };
 
     const now = audioCtx.currentTime;
-    playTone(523.25, now, 0.18);        // C5
-    playTone(659.25, now + 0.12, 0.18);  // E5
-    playTone(783.99, now + 0.24, 0.22);  // G5
-    playTone(1046.50, now + 0.36, 0.35); // C6
+    playTone(523.25, now, 0.18);
+    playTone(659.25, now + 0.12, 0.18);
+    playTone(783.99, now + 0.24, 0.22);
+    playTone(1046.50, now + 0.36, 0.35);
   } catch (e) {
-    console.warn("Audio blocked by browser. Click page to enable audio.", e);
+    console.warn("Audio blocked. Click page to enable.", e);
   }
 }
 
-// --- Render Alerts Grid ---
+// ==========================================================
+// RENDER
+// ==========================================================
+
 function render() {
   const badge = document.getElementById("alert-badge");
   if (badge) badge.textContent = alerts.length;
@@ -135,7 +245,6 @@ function render() {
   }
 
   alerts.forEach(alert => {
-    // Format elapsed time
     const elapsedSec = Math.floor((Date.now() - alert.timestamp) / 1000);
     let timeText = "Just now";
     if (elapsedSec >= 60) {
@@ -146,7 +255,6 @@ function render() {
 
     const card = document.createElement("div");
     card.className = "alert-card pending";
-
     card.innerHTML = `
       <div class="alert-info">
         <div class="alert-meta">
@@ -160,14 +268,15 @@ function render() {
         <button class="btn-complete" onclick="completeAlert('${alert.id}')">Complete</button>
       </div>
     `;
-
     container.appendChild(card);
   });
 }
 
-// --- Complete Action ---
+// ==========================================================
+// ACTIONS
+// ==========================================================
+
 async function completeAlert(alertId) {
-  // Optimistic UI update
   alerts = alerts.filter(a => a.id !== alertId);
   previousAlertIds.delete(alertId);
   render();
@@ -175,16 +284,12 @@ async function completeAlert(alertId) {
   const client = window.sbClient;
   if (client) {
     try {
-      const { error } = await client
+      await client
         .from('service_requests')
         .update({ status: 'completed' })
         .eq('id', alertId);
-
-      if (error) {
-        console.error("Error completing alert:", error);
-      }
     } catch (err) {
-      console.error("Network error on complete:", err);
+      console.error("Error completing alert:", err);
     }
   }
 }
@@ -202,9 +307,11 @@ function toggleSound() {
   }
 }
 
-// --- Init ---
+// ==========================================================
+// INIT
+// ==========================================================
+
 document.addEventListener("DOMContentLoaded", () => {
-  initSupabase();
   render();
 
   const toggleSoundBtn = document.getElementById("btn-toggle-sound");
@@ -213,17 +320,32 @@ document.addEventListener("DOMContentLoaded", () => {
   const testSoundBtn = document.getElementById("btn-test-sound");
   if (testSoundBtn) testSoundBtn.onclick = playSoundAlert;
 
-  // Unlock browser audio on first user click anywhere
+  // Unlock browser audio on first click
   document.body.addEventListener('click', () => {
     if (!audioUnlocked) {
       audioUnlocked = true;
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
       } catch (e) {}
     }
   }, { once: true });
 
-  // Refresh elapsed timestamps every 10s
+  // Keyboard support for PIN entry
+  document.addEventListener('keydown', (e) => {
+    if (isPinVerified) return;
+    if (e.key >= '0' && e.key <= '9') {
+      pinPress(e.key);
+    } else if (e.key === 'Backspace') {
+      pinDelete();
+    }
+  });
+
+  // Check if already authenticated in this tab
+  if (!checkExistingSession()) {
+    // Show PIN screen (already visible by default)
+  }
+
+  // Refresh timestamps
   setInterval(render, 10000);
 });
