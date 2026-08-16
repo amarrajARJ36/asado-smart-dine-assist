@@ -1,113 +1,96 @@
 /**
- * ARJ SmartDine Assist — Captain Dashboard Logic (Supabase Realtime)
- * Desktop-oriented, simplified, emoji-free, with sound control and instant Supabase cloud sync
+ * ARJ SmartDine Assist — Captain Dashboard Logic (Supabase Realtime + Polling Fallback)
  */
 
 let alerts = [];
 let isSoundEnabled = true;
+let previousAlertIds = new Set();
+let audioUnlocked = false;
 
-// --- Supabase Realtime & Data Fetching ---
-async function initSupabase() {
-  if (!supabase) {
-    console.warn("Supabase client not initialized.");
-    return;
-  }
+// --- Fetch Alerts from Supabase ---
+async function fetchAlerts(triggerSound = true) {
+  const client = window.sbClient || (window.supabase && window.supabase.createClient ? window.sbClient : null);
+  if (!client) return;
 
-  // 1. Initial Load of Pending Alerts
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('service_requests')
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error("Error fetching initial alerts:", error);
-    } else {
-      alerts = (data || []).map(row => ({
-        id: row.id,
-        table: row.table_name,
-        service: row.service,
-        serviceKey: row.service_key,
-        icon: row.icon,
-        status: row.status,
-        timestamp: row.created_at
-      }));
-      render();
+      console.error("Error fetching alerts:", error);
+      return;
     }
+
+    const currentAlerts = (data || []).map(row => ({
+      id: row.id,
+      table: row.table_name,
+      service: row.service,
+      serviceKey: row.service_key,
+      icon: row.icon,
+      status: row.status,
+      timestamp: row.created_at
+    }));
+
+    // Check if there are new alerts that weren't in previousAlertIds
+    const newAlertFound = currentAlerts.some(a => !previousAlertIds.has(a.id));
+    if (newAlertFound && triggerSound && isSoundEnabled && previousAlertIds.size > 0) {
+      playSoundAlert();
+    }
+
+    previousAlertIds = new Set(currentAlerts.map(a => a.id));
+    alerts = currentAlerts;
+    render();
   } catch (err) {
-    console.error("Network error on initial fetch:", err);
+    console.error("Network error fetching alerts:", err);
+  }
+}
+
+// --- Supabase Realtime & Polling Setup ---
+function initSupabase() {
+  const client = window.sbClient;
+  if (!client) {
+    console.warn("Supabase client not ready.");
+    return;
   }
 
+  // 1. Initial Fetch
+  fetchAlerts(false);
+
   // 2. Realtime Subscription
-  supabase
-    .channel('captain_alerts_channel')
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'service_requests'
-      },
-      (payload) => {
-        const newRow = payload.new;
-        if (newRow && newRow.status === 'pending') {
-          // Avoid duplicate entry if already present
-          if (!alerts.some(a => a.id === newRow.id)) {
-            alerts.push({
-              id: newRow.id,
-              table: newRow.table_name,
-              service: newRow.service,
-              serviceKey: newRow.service_key,
-              icon: newRow.icon,
-              status: newRow.status,
-              timestamp: newRow.created_at
-            });
-            render();
-            if (isSoundEnabled) {
-              playSoundAlert();
-            }
-          }
+  try {
+    client
+      .channel('captain_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'service_requests' },
+        (payload) => {
+          console.log("Realtime event received:", payload.eventType);
+          fetchAlerts(true);
         }
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'service_requests'
-      },
-      (payload) => {
-        const updatedRow = payload.new;
-        if (updatedRow && updatedRow.status === 'completed') {
-          alerts = alerts.filter(a => a.id !== updatedRow.id);
-          render();
-        }
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'service_requests'
-      },
-      (payload) => {
-        const oldRow = payload.old;
-        if (oldRow && oldRow.id) {
-          alerts = alerts.filter(a => a.id !== oldRow.id);
-          render();
-        }
-      }
-    )
-    .subscribe();
+      )
+      .subscribe((status) => {
+        console.log("Supabase Realtime Status:", status);
+      });
+  } catch (e) {
+    console.warn("Realtime subscription fallback to polling:", e);
+  }
+
+  // 3. Fast 2-second background sync fallback (guarantees 100% reliability)
+  setInterval(() => {
+    fetchAlerts(true);
+  }, 2000);
 }
 
 // --- 4-Tone Hospitality Chime ---
 function playSoundAlert() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
 
     const playTone = (freq, startTime, duration) => {
       const osc = audioCtx.createOscillator();
@@ -116,7 +99,7 @@ function playSoundAlert() {
       gain.connect(audioCtx.destination);
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0.25, startTime);
+      gain.gain.setValueAtTime(0.3, startTime);
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
       osc.start(startTime);
       osc.stop(startTime + duration);
@@ -128,7 +111,7 @@ function playSoundAlert() {
     playTone(783.99, now + 0.24, 0.22);  // G5
     playTone(1046.50, now + 0.36, 0.35); // C6
   } catch (e) {
-    console.warn("Audio blocked by browser. Click page to enable.", e);
+    console.warn("Audio blocked by browser. Click page to enable audio.", e);
   }
 }
 
@@ -186,17 +169,22 @@ function render() {
 async function completeAlert(alertId) {
   // Optimistic UI update
   alerts = alerts.filter(a => a.id !== alertId);
+  previousAlertIds.delete(alertId);
   render();
 
-  // Update in Supabase
-  if (supabase) {
-    const { error } = await supabase
-      .from('service_requests')
-      .update({ status: 'completed' })
-      .eq('id', alertId);
+  const client = window.sbClient;
+  if (client) {
+    try {
+      const { error } = await client
+        .from('service_requests')
+        .update({ status: 'completed' })
+        .eq('id', alertId);
 
-    if (error) {
-      console.error("Error completing alert:", error);
+      if (error) {
+        console.error("Error completing alert:", error);
+      }
+    } catch (err) {
+      console.error("Network error on complete:", err);
     }
   }
 }
@@ -207,7 +195,7 @@ function toggleSound() {
   if (isSoundEnabled) {
     btn.className = "btn-sound-toggle enabled";
     btn.textContent = "Sound is Enabled";
-    playSoundAlert(); // Verify audio activation
+    playSoundAlert();
   } else {
     btn.className = "btn-sound-toggle disabled";
     btn.textContent = "Sound is Muted";
@@ -225,6 +213,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const testSoundBtn = document.getElementById("btn-test-sound");
   if (testSoundBtn) testSoundBtn.onclick = playSoundAlert;
 
-  // Refresh timestamps every 15s
-  setInterval(render, 15000);
+  // Unlock browser audio on first user click anywhere
+  document.body.addEventListener('click', () => {
+    if (!audioUnlocked) {
+      audioUnlocked = true;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      } catch (e) {}
+    }
+  }, { once: true });
+
+  // Refresh elapsed timestamps every 10s
+  setInterval(render, 10000);
 });

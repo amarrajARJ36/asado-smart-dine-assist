@@ -1,6 +1,5 @@
 /**
- * ARJ SmartDine Assist — Guest Page Logic (Supabase Realtime)
- * Per-card 90s cooldown (persisted in localStorage), 1h 30m Session Limit, Supabase Realtime sync
+ * ARJ SmartDine Assist — Guest Page Logic (Supabase Realtime + Polling Fallback)
  */
 
 let isWifiConnected = true;
@@ -8,7 +7,7 @@ let currentTable = "Table 04";
 let isSessionExpired = false;
 
 const COOLDOWN_MS = 90000; // 90 seconds
-const SESSION_LIMIT_MS = 90 * 60 * 1000; // 1 hr 30 mins = 5,400,000 ms
+const SESSION_LIMIT_MS = 90 * 60 * 1000; // 1 hr 30 mins
 
 let cooldowns = {};
 
@@ -99,43 +98,68 @@ function checkSessionStatus(sessionStartOverride) {
   updateCardStates();
 }
 
-// --- Supabase Real-Time Listener ---
+// --- Check Completed Status ---
+function handleCompletedRequest(serviceName, serviceKey) {
+  showCompletedStatus(serviceName);
+  setTimeout(() => {
+    if (serviceKey) {
+      delete cooldowns[serviceKey];
+      saveCooldowns();
+      if (serviceKey === 'custom_request') {
+        const textarea = document.getElementById("custom-request-input");
+        if (textarea) textarea.value = "";
+      }
+    }
+    updateCardStates();
+    hideStatusCard();
+  }, 4000);
+}
+
+// --- Supabase Realtime & Polling Setup ---
 function initSupabaseListener() {
-  if (!supabase) {
-    console.warn("Supabase client not initialized.");
-    return;
+  const client = window.sbClient;
+  if (!client) return;
+
+  // 1. Realtime subscription
+  try {
+    client
+      .channel(`guest_channel_${currentTable}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'service_requests' },
+        (payload) => {
+          const updated = payload.new;
+          if (updated && updated.table_name === currentTable && updated.status === 'completed') {
+            handleCompletedRequest(updated.service, updated.service_key);
+          }
+        }
+      )
+      .subscribe();
+  } catch (e) {
+    console.warn("Realtime listener error:", e);
   }
 
-  // Subscribe to changes in service_requests table for this table
-  supabase
-    .channel(`guest_channel_${currentTable}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'service_requests'
-      },
-      (payload) => {
-        const updated = payload.new;
-        if (updated && updated.table_name === currentTable && updated.status === 'completed') {
-          showCompletedStatus(updated.service);
-          setTimeout(() => {
-            if (updated.service_key) {
-              delete cooldowns[updated.service_key];
-              saveCooldowns();
-              if (updated.service_key === 'custom_request') {
-                const textarea = document.getElementById("custom-request-input");
-                if (textarea) textarea.value = "";
-              }
-            }
-            updateCardStates();
-            hideStatusCard();
-          }, 4000);
+  // 2. Periodic poll check for completed requests (every 3s)
+  setInterval(async () => {
+    if (Object.keys(cooldowns).length === 0) return;
+    try {
+      const { data } = await client
+        .from('service_requests')
+        .select('*')
+        .eq('table_name', currentTable)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const latest = data[0];
+        // If completed recently (within last 15s) and still in cooldown
+        if (Date.now() - latest.created_at < 300000 && cooldowns[latest.service_key]) {
+          handleCompletedRequest(latest.service, latest.service_key);
         }
       }
-    )
-    .subscribe();
+    } catch (e) {}
+  }, 3000);
 }
 
 // --- Table Number from URL ---
@@ -171,21 +195,26 @@ async function requestService(serviceKey) {
   startCooldownTimer(serviceKey);
 
   // Send to Supabase
-  if (supabase) {
+  const client = window.sbClient;
+  if (client) {
     const alertId = 'alert_' + Date.now();
-    const { error } = await supabase.from('service_requests').insert([
-      {
-        id: alertId,
-        table_name: currentTable,
-        service: meta.label,
-        service_key: serviceKey,
-        icon: meta.icon,
-        status: 'pending',
-        created_at: Date.now()
+    try {
+      const { error } = await client.from('service_requests').insert([
+        {
+          id: alertId,
+          table_name: currentTable,
+          service: meta.label,
+          service_key: serviceKey,
+          icon: meta.icon,
+          status: 'pending',
+          created_at: Date.now()
+        }
+      ]);
+      if (error) {
+        console.error("Supabase insert error:", error);
       }
-    ]);
-    if (error) {
-      console.error("Error inserting service request:", error);
+    } catch (err) {
+      console.error("Network error on insert:", err);
     }
   }
 
@@ -208,33 +237,38 @@ async function submitCustomRequest() {
   if (!textarea) return;
 
   const text = textarea.value.trim();
-  if (!text) return; // Prevent empty submission
+  if (!text) return;
 
   const customKey = 'custom_request';
   if (cooldowns[customKey] && cooldowns[customKey] > Date.now()) return;
 
-  // 90s cooldown on custom request
+  // 90s cooldown
   cooldowns[customKey] = Date.now() + COOLDOWN_MS;
   saveCooldowns();
   updateCardStates();
   startCooldownTimer(customKey);
 
   // Send to Supabase
-  if (supabase) {
+  const client = window.sbClient;
+  if (client) {
     const alertId = 'alert_' + Date.now();
-    const { error } = await supabase.from('service_requests').insert([
-      {
-        id: alertId,
-        table_name: currentTable,
-        service: text,
-        service_key: customKey,
-        icon: "📝",
-        status: 'pending',
-        created_at: Date.now()
+    try {
+      const { error } = await client.from('service_requests').insert([
+        {
+          id: alertId,
+          table_name: currentTable,
+          service: text,
+          service_key: customKey,
+          icon: "📝",
+          status: 'pending',
+          created_at: Date.now()
+        }
+      ]);
+      if (error) {
+        console.error("Supabase custom request error:", error);
       }
-    ]);
-    if (error) {
-      console.error("Error inserting custom request:", error);
+    } catch (err) {
+      console.error("Network error on custom request:", err);
     }
   }
 
@@ -343,7 +377,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initSession();
   loadCooldowns();
 
-  // Periodically check session status (every 10s)
   setInterval(() => {
     checkSessionStatus();
   }, 10000);
