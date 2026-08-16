@@ -1,12 +1,17 @@
 /**
- * ARJ SmartDine Assist — Guest Page Logic (Supabase Realtime + Polling Fallback)
+ * ARJ SmartDine Assist — Guest Page Logic
+ * Server-enforced: Token validation, 60s rate limiting, 90-minute sessions
+ * Client-side: Cooldown UI, session countdown display, status cards
  */
 
 let isWifiConnected = true;
 let currentTable = "Table 04";
+let currentTableNumber = 4;
+let currentToken = null;
 let isSessionExpired = false;
+let isTokenValid = false;
 
-const COOLDOWN_MS = 90000; // 90 seconds
+const COOLDOWN_MS = 90000; // 90 seconds (client-side UI cooldown)
 const SESSION_LIMIT_MS = 90 * 60 * 1000; // 1 hr 30 mins
 
 let cooldowns = {};
@@ -18,7 +23,7 @@ const SERVICE_META = {
   bill:         { label: "Request Bill", icon: "🧾" }
 };
 
-// --- LocalStorage Cooldown Persistence ---
+// --- LocalStorage Cooldown Persistence (UI only — server enforces the real limit) ---
 function saveCooldowns() {
   localStorage.setItem(`smart_dine_cooldowns_${currentTable}`, JSON.stringify(cooldowns));
 }
@@ -48,9 +53,62 @@ function loadCooldowns() {
   }
 }
 
-// --- Session Management (1h 30m limit) ---
+// --- SAFEGUARD 1: Token Validation on Page Load ---
+async function validateToken() {
+  const params = new URLSearchParams(window.location.search);
+  currentToken = params.get("token");
+  const tableParam = params.get("table") || "4";
+  currentTableNumber = parseInt(tableParam, 10);
+  const formatted = tableParam.length === 1 ? `0${tableParam}` : tableParam;
+  currentTable = `Table ${formatted}`;
+  document.getElementById("guest-table-number").textContent = currentTable;
+
+  // If no token provided, block the page
+  if (!currentToken) {
+    blockPageWithTokenError();
+    return false;
+  }
+
+  // Validate token against the database
+  const client = window.sbClient;
+  if (!client) {
+    console.error("Supabase client not ready");
+    return false;
+  }
+
+  try {
+    const { data, error } = await client
+      .from('tables')
+      .select('table_number, table_name, secret_token')
+      .eq('table_number', currentTableNumber)
+      .eq('secret_token', currentToken)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      blockPageWithTokenError();
+      return false;
+    }
+
+    // Token is valid
+    isTokenValid = true;
+    console.log("Token validated for", data.table_name);
+    return true;
+  } catch (err) {
+    console.error("Token validation error:", err);
+    blockPageWithTokenError();
+    return false;
+  }
+}
+
+function blockPageWithTokenError() {
+  isTokenValid = false;
+  document.getElementById("token-modal").classList.add("active");
+}
+
+// --- SAFEGUARD 3: Session Management (display timer, server enforces) ---
 function initSession() {
-  const sessionKey = `smart_dine_session_${currentTable}`;
+  const sessionKey = `smart_dine_session_${currentTable}_${currentToken}`;
   let sessionStart = localStorage.getItem(sessionKey);
 
   if (!sessionStart) {
@@ -63,10 +121,20 @@ function initSession() {
   checkSessionStatus(sessionStart);
 }
 
+function updateSessionFromServer(remainingMs) {
+  // Server told us how much session time is left — update local display
+  if (remainingMs !== undefined && remainingMs !== null) {
+    const sessionKey = `smart_dine_session_${currentTable}_${currentToken}`;
+    const serverSessionStart = Date.now() - (SESSION_LIMIT_MS - remainingMs);
+    localStorage.setItem(sessionKey, serverSessionStart);
+    checkSessionStatus(serverSessionStart);
+  }
+}
+
 function checkSessionStatus(sessionStartOverride) {
-  const sessionKey = `smart_dine_session_${currentTable}`;
+  const sessionKey = `smart_dine_session_${currentTable}_${currentToken}`;
   let sessionStart = sessionStartOverride || parseInt(localStorage.getItem(sessionKey) || Date.now(), 10);
-  
+
   const elapsed = Date.now() - sessionStart;
   const remainingMs = SESSION_LIMIT_MS - elapsed;
 
@@ -86,7 +154,7 @@ function checkSessionStatus(sessionStartOverride) {
       const totalSec = Math.floor(remainingMs / 1000);
       const hours = Math.floor(totalSec / 3600);
       const mins = Math.floor((totalSec % 3600) / 60);
-      
+
       if (hours > 0) {
         sessionText.textContent = `Session: ${hours}h ${mins}m remaining`;
       } else {
@@ -98,7 +166,32 @@ function checkSessionStatus(sessionStartOverride) {
   updateCardStates();
 }
 
-// --- Check Completed Status ---
+// --- Handle server response errors ---
+function handleServerError(result) {
+  if (!result || result.success) return false;
+
+  if (result.error === 'INVALID_TOKEN') {
+    blockPageWithTokenError();
+    return true;
+  }
+  if (result.error === 'SESSION_EXPIRED') {
+    isSessionExpired = true;
+    document.getElementById("session-modal").classList.add("active");
+    updateCardStates();
+    return true;
+  }
+  if (result.error === 'RATE_LIMITED') {
+    document.getElementById("rate-modal").classList.add("active");
+    if (result.session_remaining_ms) {
+      updateSessionFromServer(result.session_remaining_ms);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+// --- Completed request handler ---
 function handleCompletedRequest(serviceName, serviceKey) {
   showCompletedStatus(serviceName);
   setTimeout(() => {
@@ -115,12 +208,12 @@ function handleCompletedRequest(serviceName, serviceKey) {
   }, 4000);
 }
 
-// --- Supabase Realtime & Polling Setup ---
+// --- Supabase Realtime Listener ---
 function initSupabaseListener() {
   const client = window.sbClient;
   if (!client) return;
 
-  // 1. Realtime subscription
+  // 1. Realtime subscription for completed requests
   try {
     client
       .channel(`guest_channel_${currentTable}`)
@@ -139,7 +232,7 @@ function initSupabaseListener() {
     console.warn("Realtime listener error:", e);
   }
 
-  // 2. Periodic poll check for completed requests (every 3s)
+  // 2. Polling fallback for completed requests (every 3s)
   setInterval(async () => {
     if (Object.keys(cooldowns).length === 0) return;
     try {
@@ -153,7 +246,6 @@ function initSupabaseListener() {
 
       if (data && data.length > 0) {
         const latest = data[0];
-        // If completed recently (within last 15s) and still in cooldown
         if (Date.now() - latest.created_at < 300000 && cooldowns[latest.service_key]) {
           handleCompletedRequest(latest.service, latest.service_key);
         }
@@ -162,17 +254,13 @@ function initSupabaseListener() {
   }, 3000);
 }
 
-// --- Table Number from URL ---
-function getTableFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const tableNum = params.get("table") || "4";
-  const formatted = tableNum.length === 1 ? `0${tableNum}` : tableNum;
-  currentTable = `Table ${formatted}`;
-  document.getElementById("guest-table-number").textContent = currentTable;
-}
-
-// --- Predefined Service Request ---
+// --- SECURE Service Request (via RPC) ---
 async function requestService(serviceKey) {
+  if (!isTokenValid) {
+    blockPageWithTokenError();
+    return;
+  }
+
   if (isSessionExpired) {
     document.getElementById("session-modal").classList.add("active");
     return;
@@ -188,41 +276,61 @@ async function requestService(serviceKey) {
   const meta = SERVICE_META[serviceKey];
   if (!meta) return;
 
-  // 90s cooldown on this service
+  // Optimistic UI: apply cooldown immediately
   cooldowns[serviceKey] = Date.now() + COOLDOWN_MS;
   saveCooldowns();
   updateCardStates();
   startCooldownTimer(serviceKey);
 
-  // Send to Supabase
+  // Call secure RPC function (server validates token, session, rate limit)
   const client = window.sbClient;
   if (client) {
-    const alertId = 'alert_' + Date.now();
     try {
-      const { error } = await client.from('service_requests').insert([
-        {
-          id: alertId,
-          table_name: currentTable,
-          service: meta.label,
-          service_key: serviceKey,
-          icon: meta.icon,
-          status: 'pending',
-          created_at: Date.now()
-        }
-      ]);
+      const { data, error } = await client.rpc('create_service_request', {
+        p_token: currentToken,
+        p_table_number: currentTableNumber,
+        p_service: meta.label,
+        p_service_key: serviceKey,
+        p_icon: meta.icon
+      });
+
       if (error) {
-        console.error("Supabase insert error:", error);
+        console.error("RPC error:", error);
+        // Revert cooldown on error
+        delete cooldowns[serviceKey];
+        saveCooldowns();
+        updateCardStates();
+        return;
+      }
+
+      if (data && !data.success) {
+        // Server rejected — revert cooldown and show appropriate modal
+        delete cooldowns[serviceKey];
+        saveCooldowns();
+        updateCardStates();
+        handleServerError(data);
+        return;
+      }
+
+      // Success — update session timer from server response
+      if (data && data.session_remaining_ms) {
+        updateSessionFromServer(data.session_remaining_ms);
       }
     } catch (err) {
-      console.error("Network error on insert:", err);
+      console.error("Network error on service request:", err);
     }
   }
 
   showSentStatus();
 }
 
-// --- Custom Request Submission ---
+// --- SECURE Custom Request (via RPC) ---
 async function submitCustomRequest() {
+  if (!isTokenValid) {
+    blockPageWithTokenError();
+    return;
+  }
+
   if (isSessionExpired) {
     document.getElementById("session-modal").classList.add("active");
     return;
@@ -242,30 +350,41 @@ async function submitCustomRequest() {
   const customKey = 'custom_request';
   if (cooldowns[customKey] && cooldowns[customKey] > Date.now()) return;
 
-  // 90s cooldown
+  // Optimistic cooldown
   cooldowns[customKey] = Date.now() + COOLDOWN_MS;
   saveCooldowns();
   updateCardStates();
   startCooldownTimer(customKey);
 
-  // Send to Supabase
   const client = window.sbClient;
   if (client) {
-    const alertId = 'alert_' + Date.now();
     try {
-      const { error } = await client.from('service_requests').insert([
-        {
-          id: alertId,
-          table_name: currentTable,
-          service: text,
-          service_key: customKey,
-          icon: "📝",
-          status: 'pending',
-          created_at: Date.now()
-        }
-      ]);
+      const { data, error } = await client.rpc('create_service_request', {
+        p_token: currentToken,
+        p_table_number: currentTableNumber,
+        p_service: text,
+        p_service_key: customKey,
+        p_icon: "📝"
+      });
+
       if (error) {
-        console.error("Supabase custom request error:", error);
+        console.error("RPC error:", error);
+        delete cooldowns[customKey];
+        saveCooldowns();
+        updateCardStates();
+        return;
+      }
+
+      if (data && !data.success) {
+        delete cooldowns[customKey];
+        saveCooldowns();
+        updateCardStates();
+        handleServerError(data);
+        return;
+      }
+
+      if (data && data.session_remaining_ms) {
+        updateSessionFromServer(data.session_remaining_ms);
       }
     } catch (err) {
       console.error("Network error on custom request:", err);
@@ -292,7 +411,7 @@ function startCooldownTimer(serviceKey) {
 
 // --- Card & Form States ---
 function updateCardStates() {
-  const isBlocked = !isWifiConnected || isSessionExpired;
+  const isBlocked = !isWifiConnected || isSessionExpired || !isTokenValid;
 
   // 1. Predefined cards
   document.querySelectorAll('.svc-card').forEach(card => {
@@ -310,7 +429,7 @@ function updateCardStates() {
     }
   });
 
-  // 2. Custom request form elements
+  // 2. Custom request form
   const customTextarea = document.getElementById("custom-request-input");
   const customBtn = document.getElementById("btn-send-custom");
   const customKey = 'custom_request';
@@ -370,14 +489,22 @@ function closeSessionModal() {
   document.getElementById("session-modal").classList.remove("active");
 }
 
-// --- Init ---
-document.addEventListener("DOMContentLoaded", () => {
-  getTableFromUrl();
-  initSupabaseListener();
-  initSession();
-  loadCooldowns();
+function closeRateModal() {
+  document.getElementById("rate-modal").classList.remove("active");
+}
 
+// --- Init ---
+document.addEventListener("DOMContentLoaded", async () => {
+  const tokenOk = await validateToken();
+
+  if (tokenOk) {
+    initSupabaseListener();
+    initSession();
+    loadCooldowns();
+  }
+
+  // Periodically check session status (every 10s)
   setInterval(() => {
-    checkSessionStatus();
+    if (isTokenValid) checkSessionStatus();
   }, 10000);
 });

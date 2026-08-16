@@ -130,6 +130,25 @@
     </div>
   </div>
 
+  <!-- Invalid Token Modal (blocks entire page) -->
+  <div id="token-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="font-size: 2.5rem;">🔒</div>
+      <h3>Invalid QR Code</h3>
+      <p>This link is not valid. Please scan the official QR code on your table to access SmartDine Assist.</p>
+    </div>
+  </div>
+
+  <!-- Rate Limited Modal -->
+  <div id="rate-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div style="font-size: 2.5rem;">⏳</div>
+      <h3>Please Wait</h3>
+      <p>You've already sent this request. Please wait a moment before trying again.</p>
+      <button class="btn-close-modal" onclick="closeRateModal()">Got It</button>
+    </div>
+  </div>
+
   <!-- Supabase JS SDK & Config -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
