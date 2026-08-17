@@ -91,7 +91,9 @@ async function validateToken() {
 
     // Token is valid
     isTokenValid = true;
-    console.log("Token validated for", data.table_name);
+    currentTable = data.table_name;
+    document.getElementById("guest-table-number").textContent = currentTable;
+    console.log("Token validated for", currentTable);
     return true;
   } catch (err) {
     console.error("Token validation error:", err);
