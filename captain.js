@@ -226,49 +226,73 @@ function playSoundAlert() {
 // RENDER
 // ==========================================================
 
+function getTimeText(timestamp) {
+  const elapsedSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (elapsedSec >= 60) return `${Math.floor(elapsedSec / 60)}m ago`;
+  if (elapsedSec > 5) return `${elapsedSec}s ago`;
+  return "Just now";
+}
+
 function render() {
   const badge = document.getElementById("alert-badge");
   if (badge) badge.textContent = alerts.length;
 
   const container = document.getElementById("alerts-container");
   if (!container) return;
-  container.innerHTML = "";
 
   if (alerts.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>No Active Requests</h3>
-        <p>Tables will appear here when guests request service.</p>
-      </div>
-    `;
+    // Only update if not already showing empty state
+    if (!container.querySelector('.empty-state')) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h3>No Active Requests</h3>
+          <p>Tables will appear here when guests request service.</p>
+        </div>
+      `;
+    }
     return;
   }
 
-  alerts.forEach(alert => {
-    const elapsedSec = Math.floor((Date.now() - alert.timestamp) / 1000);
-    let timeText = "Just now";
-    if (elapsedSec >= 60) {
-      timeText = `${Math.floor(elapsedSec / 60)}m ago`;
-    } else if (elapsedSec > 5) {
-      timeText = `${elapsedSec}s ago`;
-    }
+  const alertIds = alerts.map(a => a.id);
 
-    const card = document.createElement("div");
-    card.className = "alert-card pending";
-    card.innerHTML = `
-      <div class="alert-info">
-        <div class="alert-meta">
-          <span class="alert-table">${alert.table}</span>
-          <span class="alert-time">${timeText}</span>
+  // Remove cards that are no longer in the alerts list
+  container.querySelectorAll('.alert-card').forEach(card => {
+    if (!alertIds.includes(card.dataset.alertId)) {
+      card.remove();
+    }
+  });
+
+  // Remove empty state if present
+  const emptyState = container.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  alerts.forEach((alert, index) => {
+    let card = container.querySelector(`[data-alert-id='${alert.id}']`);
+
+    if (!card) {
+      // New alert — create and insert at correct position
+      card = document.createElement("div");
+      card.className = "alert-card pending";
+      card.dataset.alertId = alert.id;
+      card.innerHTML = `
+        <div class="alert-info">
+          <div class="alert-meta">
+            <span class="alert-table">${alert.table}</span>
+            <span class="alert-time" data-ts="${alert.timestamp}">${getTimeText(alert.timestamp)}</span>
+          </div>
+          <h3 class="alert-service">${alert.service}</h3>
+          <p class="alert-status">Waiting for service</p>
         </div>
-        <h3 class="alert-service">${alert.service}</h3>
-        <p class="alert-status">Waiting for service</p>
-      </div>
-      <div class="alert-actions">
-        <button class="btn-complete" onclick="completeAlert('${alert.id}')">Complete</button>
-      </div>
-    `;
-    container.appendChild(card);
+        <div class="alert-actions">
+          <button class="btn-complete" onclick="completeAlert('${alert.id}')">Complete</button>
+        </div>
+      `;
+      container.appendChild(card);
+    } else {
+      // Existing card — only update the timestamp text quietly
+      const timeEl = card.querySelector('.alert-time');
+      if (timeEl) timeEl.textContent = getTimeText(alert.timestamp);
+    }
   });
 }
 
@@ -346,6 +370,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Show PIN screen (already visible by default)
   }
 
-  // Refresh timestamps
-  setInterval(render, 10000);
+  // Refresh timestamps every 30 seconds quietly
+  setInterval(() => {
+    container && container.querySelectorAll('.alert-time[data-ts]').forEach(el => {
+      el.textContent = getTimeText(parseInt(el.dataset.ts, 10));
+    });
+  }, 30000);
 });
