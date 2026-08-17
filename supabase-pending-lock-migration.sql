@@ -25,7 +25,6 @@ DECLARE
   v_session_remaining bigint;
 BEGIN
   v_now := (EXTRACT(EPOCH FROM now()) * 1000)::bigint;
-  v_table_name := 'Table ' || LPAD(p_table_number::text, 2, '0');
 
   -- ========== SAFEGUARD 1: TOKEN VALIDATION ==========
   SELECT * INTO v_table_record
@@ -41,6 +40,8 @@ BEGIN
       'message', 'Invalid or expired table token. Please re-scan the QR code.'
     );
   END IF;
+
+  v_table_name := v_table_record.table_name;
 
   -- ========== SAFEGUARD 3: SESSION ENFORCEMENT (90 min) ==========
   UPDATE public.sessions
