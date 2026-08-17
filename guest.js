@@ -4,7 +4,6 @@
  * Client-side: Cooldown UI, session countdown display, status cards
  */
 
-let isWifiConnected = true;
 let currentTable = "Table 04";
 let currentTableNumber = 4;
 let currentToken = null;
@@ -273,11 +272,6 @@ async function requestService(serviceKey) {
     return;
   }
 
-  if (!isWifiConnected) {
-    document.getElementById("security-modal").classList.add("active");
-    return;
-  }
-
   if (cooldowns[serviceKey] && cooldowns[serviceKey] > Date.now()) return;
 
   const meta = SERVICE_META[serviceKey];
@@ -340,11 +334,6 @@ async function submitCustomRequest() {
 
   if (isSessionExpired) {
     document.getElementById("session-modal").classList.add("active");
-    return;
-  }
-
-  if (!isWifiConnected) {
-    document.getElementById("security-modal").classList.add("active");
     return;
   }
 
@@ -418,7 +407,7 @@ function startCooldownTimer(serviceKey) {
 
 // --- Card & Form States ---
 function updateCardStates() {
-  const isBlocked = !isWifiConnected || isSessionExpired || !isTokenValid;
+  const isBlocked = isSessionExpired || !isTokenValid;
 
   // 1. Predefined cards
   document.querySelectorAll('.svc-card').forEach(card => {
@@ -486,10 +475,6 @@ function showCompletedStatus() {
 
 function hideStatusCard() {
   document.getElementById("status-card").classList.remove('visible');
-}
-
-function closeSecurityModal() {
-  document.getElementById("security-modal").classList.remove("active");
 }
 
 function closeSessionModal() {

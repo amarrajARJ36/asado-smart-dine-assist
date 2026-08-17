@@ -21,23 +21,9 @@
       <span class="hero-divider"></span>
       <div class="hero-subtitle">Need something? Tap a service below and we'll take care of it.</div>
 
-      <!-- WiFi Status -->
-      <div class="wifi-badge-wrap">
-        <div id="wifi-badge" class="wifi-badge connected">
-          <span class="wifi-dot"></span>
-          <span>Connected to Restaurant WiFi</span>
-        </div>
-      </div>
-
       <!-- Session Time Remaining Badge -->
       <div id="session-badge" class="session-badge-wrap" style="display: none;">
         <span id="session-time-text">Session: 1h 30m remaining</span>
-      </div>
-
-      <!-- WiFi Warning (hidden by default) -->
-      <div id="wifi-warning" class="wifi-warning">
-        <span>⚠️</span>
-        <span>Please connect to the restaurant WiFi to use this service.</span>
       </div>
 
       <!-- Session Expired Warning (hidden by default) -->
@@ -107,16 +93,6 @@
     <!-- Footer -->
     <div class="guest-footer">
       <div class="footer-text">Powered by ARJ SmartDine Assist</div>
-    </div>
-  </div>
-
-  <!-- WiFi Block Modal -->
-  <div id="security-modal" class="modal-overlay">
-    <div class="modal-box">
-      <div style="font-size: 2.5rem;">🔒</div>
-      <h3>WiFi Required</h3>
-      <p>Please connect to the restaurant's guest WiFi network to use this service.</p>
-      <button class="btn-close-modal" onclick="closeSecurityModal()">Got It</button>
     </div>
   </div>
 
