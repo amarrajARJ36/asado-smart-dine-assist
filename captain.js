@@ -8,6 +8,7 @@ let isSoundEnabled = true;
 let previousAlertIds = new Set();
 let audioUnlocked = false;
 let isPinVerified = false;
+let isInitialLoadDone = false;
 
 // ==========================================================
 // PIN AUTHENTICATION
@@ -155,12 +156,13 @@ async function fetchAlerts(triggerSound = true) {
     }));
 
     const newAlertFound = currentAlerts.some(a => !previousAlertIds.has(a.id));
-    if (newAlertFound && triggerSound && isSoundEnabled && previousAlertIds.size > 0) {
+    if (newAlertFound && triggerSound && isSoundEnabled && isInitialLoadDone) {
       playSoundAlert();
     }
 
     previousAlertIds = new Set(currentAlerts.map(a => a.id));
     alerts = currentAlerts;
+    isInitialLoadDone = true;
     render();
   } catch (err) {
     console.error("Network error fetching alerts:", err);
