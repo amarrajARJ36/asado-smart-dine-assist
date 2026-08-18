@@ -1086,3 +1086,37 @@ body.captain-body {
   background: rgba(231, 76, 60, 0.08);
 }
 
+/* ==========================================================================
+   ANALYTICS SIDEBAR
+   ========================================================================== */
+.analytics-box {
+  margin-top: 16px;
+  border-top: 1px solid rgba(197, 168, 128, 0.1);
+  padding-top: 20px;
+}
+
+.stat-breakdown {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(197, 168, 128, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.breakdown-row .bd-count {
+  font-weight: 600;
+  color: var(--text-light);
+  background: rgba(197, 168, 128, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+}

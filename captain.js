@@ -169,11 +169,55 @@ async function fetchAlerts(triggerSound = true) {
   }
 }
 
+async function fetchDailyStats() {
+  const client = window.sbClient;
+  if (!client) return;
+
+  const startOfDayMs = new Date().setHours(0,0,0,0);
+
+  try {
+    const { data, error } = await client.rpc('get_daily_stats', {
+      p_start_of_day_ms: startOfDayMs
+    });
+
+    if (error) {
+      console.error("Error fetching daily stats:", error);
+      return;
+    }
+
+    if (data && data.success) {
+      const elTotal = document.getElementById('stat-total');
+      const elTop = document.getElementById('stat-top');
+      const elBreakdown = document.getElementById('stat-breakdown');
+
+      if (elTotal) elTotal.textContent = data.total_requests;
+      if (elTop) elTop.textContent = data.most_requested;
+      
+      if (elBreakdown) {
+        elBreakdown.innerHTML = '';
+        if (data.breakdown && data.breakdown.length > 0) {
+          data.breakdown.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'breakdown-row';
+            row.innerHTML = `<span>${item.service}</span><span class="bd-count">${item.count}</span>`;
+            elBreakdown.appendChild(row);
+          });
+        } else {
+          elBreakdown.innerHTML = `<div class="breakdown-row" style="justify-content: center;"><span>No requests yet</span></div>`;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Network error fetching daily stats:", err);
+  }
+}
+
 function initSupabase() {
   const client = window.sbClient;
   if (!client) return;
 
   fetchAlerts(false);
+  fetchDailyStats();
 
   try {
     client
@@ -188,8 +232,9 @@ function initSupabase() {
     console.warn("Realtime subscription error:", e);
   }
 
-  // 2-second polling fallback
+  // Polling fallback
   setInterval(() => { fetchAlerts(true); }, 2000);
+  setInterval(() => { fetchDailyStats(); }, 60000); // refresh stats every minute
 }
 
 // ==========================================================
@@ -314,6 +359,9 @@ async function completeAlert(alertId) {
         .from('service_requests')
         .update({ status: 'completed' })
         .eq('id', alertId);
+      
+      // Update analytics now that a request was completed
+      fetchDailyStats();
     } catch (err) {
       console.error("Error completing alert:", err);
     }
